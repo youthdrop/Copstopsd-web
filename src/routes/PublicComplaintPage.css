@@ -1,0 +1,117 @@
+.mobile-match-page {
+  min-height: 100vh;
+  background: #ffffff;
+  padding: 20px;
+  color: #111;
+}
+
+.mobile-match-card {
+  max-width: 520px;
+  margin: 0 auto;
+  padding-bottom: 80px;
+}
+
+.mobile-match-card h1 {
+  font-size: 22px;
+  font-weight: 900;
+  margin: 0 0 8px;
+  color: #111;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #444;
+  margin: 0 0 16px;
+}
+
+.mobile-match-card input {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 12px;
+  color: #111;
+  background: #fff;
+  font-size: 15px;
+}
+
+.harm-wrap {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 12px;
+  margin-top: 4px;
+  margin-bottom: 12px;
+  background: #fff;
+}
+
+.harm-wrap h2 {
+  font-size: 14px;
+  font-weight: 900;
+  color: #111;
+  margin: 0;
+}
+
+.harm-wrap p {
+  font-size: 12px;
+  color: #555;
+  margin: 2px 0 10px;
+}
+
+.harm-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  border: none;
+  background: #fff;
+  padding: 10px 8px;
+  border-radius: 10px;
+  color: #111;
+  font-size: 14px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.harm-row.checked {
+  background: #f5f5f5;
+}
+
+.box {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid #999;
+  margin-right: 10px;
+  display: grid;
+  place-items: center;
+  font-weight: 900;
+}
+
+.checked-box {
+  background: #111;
+  border-color: #111;
+  color: #fff;
+}
+
+.submit-btn {
+  width: 100%;
+  background: #111;
+  color: #fff;
+  padding: 14px;
+  border-radius: 12px;
+  border: none;
+  font-weight: 800;
+  font-size: 15px;
+  margin-top: 6px;
+  cursor: pointer;
+}
+
+.submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #b00020;
+  margin-bottom: 8px;
+}
