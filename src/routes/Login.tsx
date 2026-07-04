@@ -6,7 +6,7 @@ import { Link, useNavigate } from "react-router-dom";
  * - Uses VITE_API_BASE_URL if set
  * - Otherwise falls back to your Railway URL
  */
-const DEFAULT_API_BASE = "http://127.0.0.1:8000";
+const DEFAULT_API_BASE = "https://web-production-e0302.up.railway.app";
 
 function getApiBase() {
   // Vite exposes env vars on import.meta.env
