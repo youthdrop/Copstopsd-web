@@ -39,16 +39,19 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
-
 function RequireAdmin({ children }: { children: React.ReactNode }) {
-  const { isAdmin, loadingUser, refreshUser } = useAuth();
+  const { isAdmin, loadingUser, userLoaded, refreshUser } = useAuth();
 
   useEffect(() => {
     refreshUser();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (loadingUser) return <div className="p-6 text-sm text-gray-600">Checking permissions…</div>;
+  // Important: do not redirect until the /auth/me check has finished.
+  if (loadingUser || !userLoaded) {
+    return <div className="p-6 text-sm text-gray-600">Checking permissions…</div>;
+  }
+
   if (!isAdmin) return <Navigate to="/dashboard" replace />;
 
   return <>{children}</>;
@@ -70,14 +73,12 @@ function LogoutRoute() {
 export default function App() {
   return (
     <Routes>
-      {/* Public auth pages */}
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
       <Route path="/otp" element={<Otp />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset-password" element={<ResetPassword />} />
 
-      {/* Public policy/support pages */}
       <Route path="/privacy" element={<PrivacyPolicy />} />
       <Route path="/privacy-policy" element={<PrivacyPolicy />} />
       <Route path="/support" element={<Support />} />
@@ -87,7 +88,6 @@ export default function App() {
       <Route path="/complaint" element={<PublicComplaintPage />} />
       <Route path="/complaint/thank-you" element={<ComplaintThankYouPage />} />
 
-      {/* Logout */}
       <Route
         path="/logout"
         element={
@@ -97,7 +97,6 @@ export default function App() {
         }
       />
 
-      {/* Protected routes */}
       <Route
         path="/"
         element={
@@ -181,8 +180,7 @@ export default function App() {
         }
       />
 
-      {/* Unknown routes */}
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }

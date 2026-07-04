@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Button from "../components/Button";
 import { api } from "../lib/api";
@@ -15,36 +15,48 @@ function Card({ title, children }: { title: string; children: React.ReactNode })
 
 export default function Dashboard() {
   const navigate = useNavigate();
-  const { isAdmin } = useAuth();
+  const { isAdmin, loadingUser, userLoaded, refreshUser, user } = useAuth();
+
+  useEffect(() => {
+    refreshUser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function handleLogout() {
     try {
-      api.logout(); // clears token storage
+      api.logout();
     } catch (e) {
-      // don't block logout on errors
       console.error("Logout failed:", e);
     }
     navigate("/login", { replace: true });
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header with Logout on the upper right */}
-      <div className="flex items-start justify-between gap-4">
+    <div className="max-w-6xl mx-auto p-4 md:p-6 space-y-6">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Dashboard</h1>
           <p className="text-sm text-gray-600">
-            Add complaints, add officers, add staff accounts, and run reports.
+            Add complaints, add officers, manage databases, and run reports.
           </p>
+          {user?.email ? (
+            <p className="text-xs text-gray-500 mt-1">
+              Logged in as {user.email}{isAdmin ? " · Admin" : " · Staff"}
+            </p>
+          ) : null}
         </div>
 
         <button
           onClick={handleLogout}
-          className="px-4 py-2 text-sm border rounded-xl hover:bg-gray-100"
+          className="self-start px-4 py-2 text-sm border rounded-xl hover:bg-gray-100"
         >
           Logout
         </button>
       </div>
+
+      {loadingUser || !userLoaded ? (
+        <div className="text-sm text-gray-600">Loading your permissions…</div>
+      ) : null}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card title="Primary Actions">
@@ -72,6 +84,17 @@ export default function Dashboard() {
             <Link to="/officers" className="block">
               <Button className="w-full">Officer Database</Button>
             </Link>
+          </div>
+        </Card>
+
+        <Card title="Public Form">
+          <div className="flex flex-col gap-2">
+            <Link to="/complaint" className="block">
+              <Button className="w-full">Open Public Complaint Form</Button>
+            </Link>
+            <p className="text-xs text-gray-500">
+              Share this page with community members for public intake.
+            </p>
           </div>
         </Card>
 

@@ -5,7 +5,7 @@ import { api } from "../lib/api";
 
 export default function Otp() {
   const nav = useNavigate();
-  const { setToken, setUser, refreshUser } = useAuth();
+  const { setToken, setUser } = useAuth();
 
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -29,16 +29,16 @@ export default function Otp() {
       const cleanCode = code.trim();
 
       const res = await api.verifyOtp({ email: cleanEmail, otp_code: cleanCode });
-
-      // token is persisted by api.verifyOtp (in api.ts); this keeps AuthContext in sync
       setToken(res.access_token);
-      const me = await refreshUser();
-      if (me) setUser(me);
+
+      // Load the user immediately so Dashboard and /staff know admin status right away.
+      const me = await api.me();
+      setUser(me);
 
       sessionStorage.removeItem("login_email");
-      sessionStorage.removeItem("login_password"); // legacy cleanup
+      sessionStorage.removeItem("login_password");
 
-      nav("/", { replace: true });
+      nav("/dashboard", { replace: true });
     } catch (e: any) {
       setErr(e?.message || "OTP verification failed");
     } finally {
