@@ -22,6 +22,14 @@ function todayYYYYMMDD() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function currentTimeHHMM() {
+  return new Date().toTimeString().slice(0, 5);
+}
+
+function RequiredAsterisk() {
+  return <span className="required-star" aria-hidden="true">*</span>;
+}
+
 async function submitPublicIntake(payload: Record<string, unknown>) {
   const response = await fetch(`${API_URL}/public/intake`, {
     method: "POST",
@@ -48,7 +56,7 @@ export default function PublicComplaintPage() {
   const [phone, setPhone] = useState("");
   const [department, setDepartment] = useState("");
   const [stopDate, setStopDate] = useState(todayYYYYMMDD());
-  const [stopTime, setStopTime] = useState("");
+  const [stopTime, setStopTime] = useState(currentTimeHHMM());
   const [harms, setHarms] = useState<HarmOption[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -87,6 +95,7 @@ export default function PublicComplaintPage() {
         stop_date: stopDate,
         stop_time: stopTime,
         harm_done: harms,
+        harm_types: harms,
       };
 
       const resp = await submitPublicIntake(payload);
@@ -97,84 +106,134 @@ export default function PublicComplaintPage() {
           : "/complaint/thank-you"
       );
     } catch (e: any) {
-      setErr(e?.message || "Something went wrong.");
+      setErr(e?.message || "Something went wrong. Please try again.");
     } finally {
       setSaving(false);
     }
   }
 
   return (
-    <main className="mobile-match-page">
-      <form className="mobile-match-card" onSubmit={onSubmit}>
-        <h1>Submit a Complaint</h1>
-        <p className="subtitle">
-          Public intake form — your report is sent directly to our system.
-        </p>
+    <main className="public-page">
+      <form className="public-card" onSubmit={onSubmit}>
+        <header className="public-header">
+          <div className="brand-mark">CopStopSD</div>
+          <h1>Submit a Complaint</h1>
+          <p className="subtitle">
+            Fields marked with <RequiredAsterisk /> are required. We collect only the minimum information needed so a community advocate can follow up safely.
+          </p>
+        </header>
 
-        <input
-          placeholder="First name"
-          value={first}
-          onChange={(e) => setFirst(e.target.value)}
-        />
+        <section className="form-section" aria-label="Contact information">
+          <h2>Your Contact Information</h2>
 
-        <input
-          placeholder="Last name"
-          value={last}
-          onChange={(e) => setLast(e.target.value)}
-        />
+          <div className="field-grid two-col">
+            <label className="field-label">
+              <span>First Name <RequiredAsterisk /></span>
+              <input
+                value={first}
+                onChange={(e) => setFirst(e.target.value)}
+                autoComplete="given-name"
+                required
+              />
+            </label>
 
-        <input
-          placeholder="Telephone number"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
-        />
+            <label className="field-label">
+              <span>Last Name <RequiredAsterisk /></span>
+              <input
+                value={last}
+                onChange={(e) => setLast(e.target.value)}
+                autoComplete="family-name"
+                required
+              />
+            </label>
+          </div>
 
-        <input
-          placeholder="Department (e.g., SDPD, SD Sheriff, CHP)"
-          value={department}
-          onChange={(e) => setDepartment(e.target.value)}
-        />
-
-        <input
-          type="date"
-          value={stopDate}
-          max={todayYYYYMMDD()}
-          onChange={(e) => setStopDate(e.target.value)}
-        />
-
-        <input
-          type="time"
-          value={stopTime}
-          onChange={(e) => setStopTime(e.target.value)}
-        />
-
-        <section className="harm-wrap">
-          <h2>Harm done *</h2>
-          <p>Select all that apply.</p>
-
-          {HARM_OPTIONS.map((harm) => {
-            const checked = harms.includes(harm);
-
-            return (
-              <button
-                key={harm}
-                type="button"
-                className={checked ? "harm-row checked" : "harm-row"}
-                onClick={() => toggleHarm(harm)}
-              >
-                <span className={checked ? "box checked-box" : "box"}>
-                  {checked ? "✓" : ""}
-                </span>
-                {harm}
-              </button>
-            );
-          })}
+          <label className="field-label">
+            <span>Telephone Number <RequiredAsterisk /></span>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              placeholder="Example: 619-555-0123"
+              required
+            />
+          </label>
         </section>
 
-        {err ? <p className="error">{err}</p> : null}
+        <section className="form-section" aria-label="Stop information">
+          <h2>Stop Information</h2>
+
+          <label className="field-label">
+            <span>Law Enforcement Agency <RequiredAsterisk /></span>
+            <input
+              value={department}
+              onChange={(e) => setDepartment(e.target.value)}
+              placeholder="Example: SDPD, Sheriff, CHP"
+              required
+            />
+          </label>
+
+          <div className="field-grid two-col">
+            <label className="field-label">
+              <span>Date of Incident <RequiredAsterisk /></span>
+              <input
+                type="date"
+                value={stopDate}
+                max={todayYYYYMMDD()}
+                onChange={(e) => setStopDate(e.target.value)}
+                required
+              />
+            </label>
+
+            <label className="field-label">
+              <span>Time of Incident <RequiredAsterisk /></span>
+              <input
+                type="time"
+                value={stopTime}
+                onChange={(e) => setStopTime(e.target.value)}
+                required
+              />
+              <small>Current time is filled in automatically. Change it if needed.</small>
+            </label>
+          </div>
+        </section>
+
+        <section className="harm-wrap">
+          <h2>Harm Done <RequiredAsterisk /></h2>
+          <p>Select all that apply.</p>
+
+          <div className="harm-list">
+            {HARM_OPTIONS.map((harm) => {
+              const checked = harms.includes(harm);
+
+              return (
+                <button
+                  key={harm}
+                  type="button"
+                  className={checked ? "harm-row checked" : "harm-row"}
+                  onClick={() => toggleHarm(harm)}
+                  aria-pressed={checked}
+                >
+                  <span className={checked ? "box checked-box" : "box"}>
+                    {checked ? "✓" : ""}
+                  </span>
+                  {harm}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <p className="privacy-note">
+          We do not ask you to describe what happened in this public form. A trained advocate will contact you to safely complete the report.
+        </p>
+
+        {err ? <p className="error" role="alert">{err}</p> : null}
 
         <button className="submit-btn" disabled={!canSubmit || saving}>
-          {saving ? "Submitting..." : "Submit Complaint"}
+          {saving ? "Submitting..." : "Submit Securely"}
         </button>
       </form>
     </main>
