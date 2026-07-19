@@ -43,26 +43,55 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
   async function uploadFiles(files: FileList | null) {
     if (!files?.length) return;
 
+    const selectedFiles = Array.from(files);
+
     setUploading(true);
     setError("");
     setMessage("");
 
+    let uploadedCount = 0;
+    const failedFiles: string[] = [];
+
     try {
-      for (const file of Array.from(files)) {
+      for (const file of selectedFiles) {
         if (file.size > 25 * 1024 * 1024) {
-          throw new Error(`${file.name} is larger than the 25 MB file limit.`);
+          failedFiles.push(`${file.name}: larger than the 25 MB limit`);
+          continue;
         }
-        await api.uploadComplaintDocument(complaintId, section, file);
+
+        try {
+          await api.uploadComplaintDocument(complaintId, section, file);
+          uploadedCount += 1;
+        } catch (e: any) {
+          const reason = e?.message || "upload failed";
+          failedFiles.push(`${file.name}: ${reason}`);
+        }
       }
 
-      if (inputRef.current) inputRef.current.value = "";
       await loadDocuments();
-      setMessage(files.length === 1 ? "Document uploaded." : `${files.length} documents uploaded.`);
-    } catch (e: any) {
-      setError(e?.message || "Upload failed");
+
+      if (uploadedCount > 0) {
+        setMessage(
+          uploadedCount === 1
+            ? "1 document uploaded."
+            : `${uploadedCount} documents uploaded.`
+        );
+      }
+
+      if (failedFiles.length > 0) {
+        setError(`Could not upload: ${failedFiles.join("; ")}`);
+      }
     } finally {
+      // Always clear the browser file selection, even when one file fails.
+      if (inputRef.current) inputRef.current.value = "";
       setUploading(false);
     }
+  }
+
+  function clearSelectedFiles() {
+    if (inputRef.current) inputRef.current.value = "";
+    setError("");
+    setMessage("");
   }
 
   async function downloadDocument(document: ComplaintDocument) {
@@ -120,6 +149,14 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
           onChange={(event) => uploadFiles(event.target.files)}
           disabled={uploading}
         />
+        <button
+          type="button"
+          className="px-3 py-2 border rounded-xl text-sm"
+          onClick={clearSelectedFiles}
+          disabled={uploading}
+        >
+          Clear Selection
+        </button>
         {uploading ? <span className="text-sm text-gray-600">Uploading…</span> : null}
       </div>
 
