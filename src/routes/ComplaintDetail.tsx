@@ -1,16 +1,7 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button";
 import { api } from "../lib/api";
-
-type Officer = {
-  id: number;
-  first_name: string;
-  last_name: string;
-  badge_number?: string | null;
-  department?: string | null;
-  unit?: string | null;
-};
 
 type CaseNote = {
   id: number;
@@ -67,17 +58,6 @@ export default function ComplaintDetail() {
   const [stopTime, setStopTime] = useState("");
   const [narrative, setNarrative] = useState("");
   const [harmTypes, setHarmTypes] = useState<string[]>([]);
-  const [allOfficers, setAllOfficers] = useState<Officer[]>([]);
-  const [officerSearch, setOfficerSearch] = useState("");
-  const [showNewOfficer, setShowNewOfficer] = useState(false);
-  const [newOfficer, setNewOfficer] = useState({
-    first_name: "",
-    last_name: "",
-    badge_number: "",
-    department: "",
-    unit: "",
-  });
-
 
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [noteText, setNoteText] = useState("");
@@ -89,25 +69,6 @@ export default function ComplaintDetail() {
       prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]
     );
   }
-
-  const selectedOfficerIds = useMemo(
-    () => new Set<number>((officers || []).map((o: any) => Number(o.id))),
-    [officers]
-  );
-
-  const filteredOfficers = useMemo(() => {
-    const q = officerSearch.trim().toLowerCase();
-    if (!q) return allOfficers.slice(0, 25);
-    return allOfficers
-      .filter((o) =>
-        [o.first_name, o.last_name, o.badge_number, o.department, o.unit]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase()
-          .includes(q)
-      )
-      .slice(0, 25);
-  }, [allOfficers, officerSearch]);
 
   function currentOfficerIds(): number[] {
     return (officers || [])
@@ -135,13 +96,6 @@ export default function ComplaintDetail() {
       setStopTime(toHHMM(c.stop_time));
       setNarrative(c.narrative ?? "");
       setHarmTypes(harmFromComplaint(c));
-
-      try {
-        const rows = await api.listOfficers("");
-        setAllOfficers(Array.isArray(rows) ? rows : []);
-      } catch {
-        setAllOfficers([]);
-      }
 
       try {
         const n = await api.listCaseNotes("complaint", complaintId);
@@ -188,24 +142,14 @@ export default function ComplaintDetail() {
   }
 
   async function saveOfficerIds(ids: number[], message: string) {
-    const updated = await api.updateComplaint(complaintId, { officer_ids: ids });
-    setComplaint(updated);
-    setStatusMsg(message);
-  }
+    await api.updateComplaint(complaintId, { officer_ids: ids });
 
-  async function attachOfficer(officer: Officer) {
-    if (selectedOfficerIds.has(officer.id)) return;
-    setSaving(true);
-    setError("");
-    setStatusMsg("");
-    try {
-      await saveOfficerIds([...currentOfficerIds(), officer.id], "Officer added.");
-      setOfficerSearch("");
-    } catch (e: any) {
-      setError(typeof e?.message === "string" ? e.message : "Could not add officer");
-    } finally {
-      setSaving(false);
-    }
+    // Re-fetch the complaint so the officers relationship is fully refreshed.
+    // Some API responses save officer_ids correctly but do not immediately
+    // return the populated officers list.
+    const refreshed = await api.getComplaint(complaintId);
+    setComplaint(refreshed);
+    setStatusMsg(message);
   }
 
   async function removeOfficer(officerId: number) {
@@ -224,35 +168,6 @@ export default function ComplaintDetail() {
     }
   }
 
-  async function createAndAttachOfficer() {
-    if (!newOfficer.first_name.trim() || !newOfficer.last_name.trim()) {
-      setError("Officer first and last name are required.");
-      return;
-    }
-
-    setSaving(true);
-    setError("");
-    setStatusMsg("");
-    try {
-      const created = await api.createOfficer({
-        first_name: newOfficer.first_name.trim(),
-        last_name: newOfficer.last_name.trim(),
-        badge_number: newOfficer.badge_number.trim() || null,
-        department: newOfficer.department.trim() || complaint.department || null,
-        unit: newOfficer.unit.trim() || null,
-      });
-      if (!created?.id) throw new Error("Officer was created without an ID");
-
-      setAllOfficers((prev) => [...prev, created]);
-      await saveOfficerIds([...currentOfficerIds(), Number(created.id)], "Officer created and added.");
-      setNewOfficer({ first_name: "", last_name: "", badge_number: "", department: "", unit: "" });
-      setShowNewOfficer(false);
-    } catch (e: any) {
-      setError(typeof e?.message === "string" ? e.message : "Could not create officer");
-    } finally {
-      setSaving(false);
-    }
-  }
 
 
   async function addNote() {
@@ -366,30 +281,51 @@ export default function ComplaintDetail() {
             </div>
           </div>
 
-          <div className="md:col-span-2">
-            <div className="text-xs text-gray-500">Officers Involved</div>
+          <div className="md:col-span-2 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-xs text-gray-500">Officers Involved</div>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    `/officers?complaintId=${complaintId}&returnTo=${encodeURIComponent(`/complaints/${complaintId}`)}`
+                  )
+                }
+                className="px-3 py-2 text-sm border rounded-xl hover:bg-gray-50"
+              >
+                + Add Officer
+              </button>
+            </div>
+
             {officers?.length ? (
-              <ul className="list-disc pl-5 mt-1">
+              <div className="space-y-2">
                 {officers.map((o: any) => (
-                  <li key={o.id} className="flex items-center justify-between gap-3 py-1">
-                    <span>
-                      {o.first_name} {o.last_name}
-                      {o.badge_number ? ` — Badge ${o.badge_number}` : ""}
-                      {o.department ? ` — ${o.department}` : ""}
-                    </span>
+                  <div key={o.id} className="flex items-center justify-between gap-3 rounded-xl border p-3">
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/officers/${o.id}`)}
+                      className="text-left min-w-0"
+                    >
+                      <div className="font-medium">{o.first_name} {o.last_name}</div>
+                      <div className="text-sm text-gray-500">
+                        {o.badge_number ? `Badge ${o.badge_number}` : "No badge listed"}
+                        {o.department ? ` • ${o.department}` : ""}
+                        {o.unit ? ` • ${o.unit}` : ""}
+                      </div>
+                    </button>
                     <button
                       type="button"
                       onClick={() => removeOfficer(Number(o.id))}
-                      className="text-xs underline text-red-700"
+                      className="px-3 py-2 text-sm border rounded-xl text-red-700"
                       disabled={saving}
                     >
                       Remove
                     </button>
-                  </li>
+                  </div>
                 ))}
-              </ul>
+              </div>
             ) : (
-              <div className="font-medium">—</div>
+              <div className="text-sm text-gray-600">No officers attached yet.</div>
             )}
           </div>
         </div>
@@ -471,50 +407,6 @@ export default function ComplaintDetail() {
             </div>
           </div>
 
-          <div className="space-y-3 md:col-span-2 border-t pt-4">
-            <div className="flex items-center justify-between gap-3">
-              <label className="text-sm font-medium">Add an Officer</label>
-              <button
-                type="button"
-                className="text-sm underline"
-                onClick={() => setShowNewOfficer((v) => !v)}
-              >
-                + Create New Officer
-              </button>
-            </div>
-
-            <input
-              className="w-full border rounded-xl px-3 py-2"
-              value={officerSearch}
-              onChange={(e) => setOfficerSearch(e.target.value)}
-              placeholder="Search by officer name, badge, department, or unit"
-            />
-
-            <div className="max-h-56 overflow-y-auto border rounded-xl divide-y">
-              {filteredOfficers.length ? filteredOfficers.map((o) => (
-                <div key={o.id} className="flex items-center justify-between gap-3 p-3">
-                  <div className="text-sm">
-                    <div className="font-medium">{o.first_name} {o.last_name}</div>
-                    <div className="text-gray-500">
-                      {o.badge_number ? `Badge ${o.badge_number}` : "No badge listed"}
-                      {o.department ? ` • ${o.department}` : ""}
-                      {o.unit ? ` • ${o.unit}` : ""}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={saving || selectedOfficerIds.has(o.id)}
-                    onClick={() => attachOfficer(o)}
-                    className="px-3 py-2 text-sm border rounded-xl disabled:opacity-50"
-                  >
-                    {selectedOfficerIds.has(o.id) ? "Added" : "Add"}
-                  </button>
-                </div>
-              )) : (
-                <div className="p-3 text-sm text-gray-600">No matching officers.</div>
-              )}
-            </div>
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
@@ -556,65 +448,6 @@ export default function ComplaintDetail() {
         )}
       </div>
 
-      {showNewOfficer ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="new-officer-title"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget && !saving) setShowNewOfficer(false);
-          }}
-        >
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-xl">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 id="new-officer-title" className="text-xl font-semibold">Create New Officer</h2>
-                <p className="mt-1 text-sm text-gray-600">The officer will be created and attached to this complaint automatically.</p>
-              </div>
-              <button
-                type="button"
-                className="rounded-lg px-3 py-1 text-xl hover:bg-gray-100"
-                onClick={() => setShowNewOfficer(false)}
-                disabled={saving}
-                aria-label="Close"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="mt-5 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <label className="space-y-1 text-sm font-medium">
-                <span>First Name *</span>
-                <input className="w-full border rounded-xl px-3 py-2" value={newOfficer.first_name} onChange={(e) => setNewOfficer({ ...newOfficer, first_name: e.target.value })} autoFocus />
-              </label>
-              <label className="space-y-1 text-sm font-medium">
-                <span>Last Name *</span>
-                <input className="w-full border rounded-xl px-3 py-2" value={newOfficer.last_name} onChange={(e) => setNewOfficer({ ...newOfficer, last_name: e.target.value })} />
-              </label>
-              <label className="space-y-1 text-sm font-medium">
-                <span>Badge Number</span>
-                <input className="w-full border rounded-xl px-3 py-2" value={newOfficer.badge_number} onChange={(e) => setNewOfficer({ ...newOfficer, badge_number: e.target.value })} />
-              </label>
-              <label className="space-y-1 text-sm font-medium">
-                <span>Department</span>
-                <input className="w-full border rounded-xl px-3 py-2" placeholder={complaint.department || "Department"} value={newOfficer.department} onChange={(e) => setNewOfficer({ ...newOfficer, department: e.target.value })} />
-              </label>
-              <label className="space-y-1 text-sm font-medium md:col-span-2">
-                <span>Unit</span>
-                <input className="w-full border rounded-xl px-3 py-2" value={newOfficer.unit} onChange={(e) => setNewOfficer({ ...newOfficer, unit: e.target.value })} />
-              </label>
-            </div>
-
-            <div className="mt-5 flex justify-end gap-3">
-              <button type="button" className="px-4 py-2 text-sm border rounded-xl hover:bg-gray-50" onClick={() => setShowNewOfficer(false)} disabled={saving}>Cancel</button>
-              <Button disabled={saving || !newOfficer.first_name.trim() || !newOfficer.last_name.trim()} onClick={createAndAttachOfficer}>
-                {saving ? "Creating…" : "Create and Attach Officer"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }

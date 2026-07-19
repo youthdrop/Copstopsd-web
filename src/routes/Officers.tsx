@@ -59,6 +59,10 @@ export default function Officers() {
 
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const returnTo = params.get("returnTo") || "";
+  const complaintIdRaw = params.get("complaintId");
+  const complaintId = Number(complaintIdRaw);
+  const isComplaintAttachMode = Number.isFinite(complaintId) && complaintId > 0;
+  const complaintReturnTo = returnTo || (isComplaintAttachMode ? `/complaints/${complaintId}` : "");
 
   const selectedCsv = params.get("selectedOfficerIds");
   const selectedSet = useMemo(() => parseCsvIds(selectedCsv), [selectedCsv]);
@@ -69,6 +73,9 @@ export default function Officers() {
   const [err, setErr] = useState<string | null>(null);
 
   const [status, setStatus] = useState<string | null>(null);
+  const [attachingId, setAttachingId] = useState<number | null>(null);
+  const [complaint, setComplaint] = useState<any>(null);
+  const [attachedOfficerIds, setAttachedOfficerIds] = useState<Set<number>>(new Set());
 
   const [form, setForm] = useState({
     first_name: "",
@@ -95,8 +102,27 @@ export default function Officers() {
     }
   }
 
+  async function loadComplaintForAttachMode() {
+    if (!isComplaintAttachMode) return;
+    try {
+      const data = await api.getComplaint(complaintId);
+      setComplaint(data);
+      setAttachedOfficerIds(
+        new Set<number>(
+          (Array.isArray(data?.officers) ? data.officers : [])
+            .map((o: Officer) => Number(o.id))
+            .filter((id: number) => Number.isFinite(id) && id > 0)
+        )
+      );
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to load complaint";
+      setErr(msg);
+    }
+  }
+
   useEffect(() => {
     load();
+    loadComplaintForAttachMode();
 
     const raw = sessionStorage.getItem(OFFICERS_SCROLL_KEY);
     if (raw) {
@@ -107,6 +133,34 @@ export default function Officers() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  async function attachOfficerToComplaint(officerId: number) {
+    if (!isComplaintAttachMode) return;
+    if (attachedOfficerIds.has(officerId)) {
+      navigate(complaintReturnTo);
+      return;
+    }
+
+    setErr(null);
+    setStatus(null);
+    setAttachingId(officerId);
+
+    try {
+      const current = complaint ?? (await api.getComplaint(complaintId));
+      const existingIds = (Array.isArray(current?.officers) ? current.officers : [])
+        .map((o: Officer) => Number(o.id))
+        .filter((id: number) => Number.isFinite(id) && id > 0);
+
+      const officerIds = Array.from(new Set([...existingIds, officerId]));
+      await api.updateComplaint(complaintId, { officer_ids: officerIds });
+      navigate(complaintReturnTo, { replace: true });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Failed to attach officer";
+      setErr(msg);
+    } finally {
+      setAttachingId(null);
+    }
+  }
 
   function returnWithOfficer(officerId: number) {
     sessionStorage.setItem(OFFICERS_SCROLL_KEY, String(window.scrollY));
@@ -159,7 +213,12 @@ export default function Officers() {
 
       await load(q);
 
-      // If we were called from ComplaintNew, return immediately with officer selected.
+      if (isComplaintAttachMode) {
+        await attachOfficerToComplaint(created.id);
+        return;
+      }
+
+      // Preserve the existing new-complaint officer selection workflow.
       if (returnTo) {
         returnWithOfficer(created.id);
       }
@@ -170,6 +229,10 @@ export default function Officers() {
   }
 
   function onSelect(officerId: number) {
+    if (isComplaintAttachMode) {
+      void attachOfficerToComplaint(officerId);
+      return;
+    }
     returnWithOfficer(officerId);
   }
 
@@ -180,6 +243,11 @@ export default function Officers() {
 
   function goBack() {
     sessionStorage.setItem(OFFICERS_SCROLL_KEY, String(window.scrollY));
+
+    if (isComplaintAttachMode) {
+      navigate(complaintReturnTo);
+      return;
+    }
 
     if (returnTo) {
       navigate(returnTo, {
@@ -199,9 +267,13 @@ export default function Officers() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold">Officers</h1>
-          {returnTo ? (
+          {isComplaintAttachMode ? (
             <div className="text-sm text-gray-600">
-              Selecting officer(s) for: <span className="font-mono">{returnTo}</span>
+              Adding an officer to {complaint?.case_number ? `Complaint #${complaint.case_number}` : `Complaint #${complaintId}`}
+            </div>
+          ) : returnTo ? (
+            <div className="text-sm text-gray-600">
+              Selecting officer(s) for a new complaint
             </div>
           ) : null}
         </div>
@@ -230,7 +302,7 @@ export default function Officers() {
 
       {/* Add officer */}
       <div className="border rounded p-4 space-y-3">
-        <div className="font-semibold">Add Officer</div>
+        <div className="font-semibold">{isComplaintAttachMode ? "Create and Attach New Officer" : "Add Officer"}</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <Input value={form.first_name} onChange={(e) => setForm((s) => ({ ...s, first_name: e.target.value }))} placeholder="First name" />
@@ -254,7 +326,7 @@ export default function Officers() {
 
         <div className="flex items-center gap-2">
           <button className="px-4 py-2 rounded bg-black text-white hover:bg-gray-800 disabled:opacity-50" onClick={submit} disabled={loading}>
-            Add
+            {isComplaintAttachMode ? "Create and Attach" : "Add"}
           </button>
 
           {status ? <span className="text-sm text-green-700">{status}</span> : null}
@@ -273,7 +345,9 @@ export default function Officers() {
           {items.length === 0 && !loading ? <div className="p-4 text-sm text-gray-600">No officers found.</div> : null}
 
           {items.map((o) => {
-            const selected = selectedSet.has(o.id);
+            const selected = isComplaintAttachMode
+              ? attachedOfficerIds.has(o.id)
+              : selectedSet.has(o.id);
 
             return (
               <div key={o.id} className="p-4 flex items-center justify-between gap-3">
@@ -288,7 +362,15 @@ export default function Officers() {
                 </div>
 
                 <div className="flex items-center gap-2 shrink-0">
-                  {returnTo ? (
+                  {isComplaintAttachMode ? (
+                    <button
+                      className="px-3 py-2 rounded border hover:bg-gray-50 disabled:opacity-50"
+                      onClick={() => onSelect(o.id)}
+                      disabled={selected || attachingId === o.id}
+                    >
+                      {selected ? "Attached" : attachingId === o.id ? "Attaching…" : "Attach to Complaint"}
+                    </button>
+                  ) : returnTo ? (
                     <button className="px-3 py-2 rounded border hover:bg-gray-50" onClick={() => onSelect(o.id)}>
                       Select
                     </button>
