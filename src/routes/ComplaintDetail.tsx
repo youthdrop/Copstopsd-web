@@ -48,6 +48,7 @@ export default function ComplaintDetail() {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [removingOfficerId, setRemovingOfficerId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [statusMsg, setStatusMsg] = useState("");
   const [complaint, setComplaint] = useState<any>(null);
@@ -153,17 +154,36 @@ export default function ComplaintDetail() {
   }
 
   async function removeOfficer(officerId: number) {
+    const previousComplaint = complaint;
+    const remainingIds = currentOfficerIds().filter((id) => id !== officerId);
+
     setSaving(true);
+    setRemovingOfficerId(officerId);
     setError("");
     setStatusMsg("");
+
+    // Remove the officer from the screen immediately. If the API request fails,
+    // restore the prior complaint state below.
+    setComplaint((current: any) => ({
+      ...current,
+      officers: (current?.officers ?? []).filter(
+        (officer: any) => Number(officer.id) !== officerId
+      ),
+      officer_ids: remainingIds,
+    }));
+
     try {
-      await saveOfficerIds(
-        currentOfficerIds().filter((id) => id !== officerId),
-        "Officer removed."
-      );
+      await api.updateComplaint(complaintId, { officer_ids: remainingIds });
+
+      // Re-fetch from the server to keep the relationship synchronized.
+      const refreshed = await api.getComplaint(complaintId);
+      setComplaint(refreshed);
+      setStatusMsg("Officer removed.");
     } catch (e: any) {
+      setComplaint(previousComplaint);
       setError(typeof e?.message === "string" ? e.message : "Could not remove officer");
     } finally {
+      setRemovingOfficerId(null);
       setSaving(false);
     }
   }
@@ -319,7 +339,7 @@ export default function ComplaintDetail() {
                       className="px-3 py-2 text-sm border rounded-xl text-red-700"
                       disabled={saving}
                     >
-                      Remove
+                      {removingOfficerId === Number(o.id) ? "Removing…" : "Remove"}
                     </button>
                   </div>
                 ))}
