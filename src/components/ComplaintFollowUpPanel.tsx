@@ -21,6 +21,33 @@ const FINDINGS = [
   "Unfounded",
 ];
 
+type DispositionFinding = {
+  finding: string;
+  description: string;
+};
+
+function normalizeFindings(values: unknown): DispositionFinding[] {
+  if (!Array.isArray(values) || values.length === 0) {
+    return [{ finding: "Miscellaneous", description: "" }];
+  }
+
+  return values.map((value) => {
+    if (typeof value === "string") {
+      return { finding: value || "Miscellaneous", description: "" };
+    }
+
+    if (value && typeof value === "object") {
+      const row = value as Record<string, unknown>;
+      return {
+        finding: typeof row.finding === "string" && row.finding ? row.finding : "Miscellaneous",
+        description: typeof row.description === "string" ? row.description : "",
+      };
+    }
+
+    return { finding: "Miscellaneous", description: "" };
+  });
+}
+
 const emptyFollowUp = (complaintId: number): ComplaintFollowUp => ({
   complaint_id: complaintId,
   original_submitted_date: null,
@@ -33,7 +60,7 @@ const emptyFollowUp = (complaintId: number): ComplaintFollowUp => ({
   cpp_status: "",
   cpp_case_note: "",
   disposition_date: null,
-  disposition_findings: ["Miscellaneous"],
+  disposition_findings: [{ finding: "Miscellaneous", description: "" }],
   disposition_case_note: "",
 });
 
@@ -54,8 +81,7 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
           ...emptyFollowUp(complaintId),
           ...value,
           original_submitted_to: value.original_submitted_to || [],
-          disposition_findings:
-            value.disposition_findings?.length ? value.disposition_findings : ["Miscellaneous"],
+          disposition_findings: normalizeFindings(value.disposition_findings),
         });
       })
       .catch((e: any) => active && setError(e?.message || "Failed to load complaint follow-up"))
@@ -74,19 +100,31 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
   }
 
   function changeFinding(index: number, value: string) {
-    const next = [...(data.disposition_findings || ["Miscellaneous"])];
-    next[index] = value;
+    const next = normalizeFindings(data.disposition_findings);
+    next[index] = { ...next[index], finding: value };
+    update("disposition_findings", next);
+  }
+
+  function changeFindingDescription(index: number, value: string) {
+    const next = normalizeFindings(data.disposition_findings);
+    next[index] = { ...next[index], description: value };
     update("disposition_findings", next);
   }
 
   function addFinding() {
-    update("disposition_findings", [...(data.disposition_findings || []), "Miscellaneous"]);
+    update("disposition_findings", [
+      ...normalizeFindings(data.disposition_findings),
+      { finding: "Miscellaneous", description: "" },
+    ]);
   }
 
   function removeFinding(index: number) {
-    const next = [...(data.disposition_findings || [])];
+    const next = normalizeFindings(data.disposition_findings);
     next.splice(index, 1);
-    update("disposition_findings", next.length ? next : ["Miscellaneous"]);
+    update(
+      "disposition_findings",
+      next.length ? next : [{ finding: "Miscellaneous", description: "" }]
+    );
   }
 
   async function save() {
@@ -253,29 +291,42 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
         </label>
 
         <div className="space-y-3">
-          {(data.disposition_findings || ["Miscellaneous"]).map((finding, index) => (
-            <div key={index} className="flex flex-wrap items-end gap-2">
-              <label className="space-y-1 grow max-w-md">
-                <span className="text-sm font-medium">Finding {index + 1}</span>
-                <select
-                  className="w-full border rounded-xl px-3 py-2"
-                  value={finding}
-                  onChange={(e) => changeFinding(index, e.target.value)}
-                >
-                  {FINDINGS.map((option) => (
-                    <option key={option} value={option}>{option}</option>
-                  ))}
-                </select>
+          {normalizeFindings(data.disposition_findings).map((finding, index) => (
+            <div key={index} className="border rounded-xl p-3 space-y-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <label className="space-y-1 grow max-w-md">
+                  <span className="text-sm font-medium">Finding {index + 1}</span>
+                  <select
+                    className="w-full border rounded-xl px-3 py-2"
+                    value={finding.finding}
+                    onChange={(e) => changeFinding(index, e.target.value)}
+                  >
+                    {FINDINGS.map((option) => (
+                      <option key={option} value={option}>{option}</option>
+                    ))}
+                  </select>
+                </label>
+
+                {index > 0 ? (
+                  <button
+                    type="button"
+                    className="px-3 py-2 border rounded-xl text-red-700"
+                    onClick={() => removeFinding(index)}
+                  >
+                    Remove
+                  </button>
+                ) : null}
+              </div>
+
+              <label className="block space-y-1">
+                <span className="text-sm font-medium">What was this finding about?</span>
+                <textarea
+                  className="w-full border rounded-xl px-3 py-2 min-h-[90px]"
+                  value={finding.description}
+                  onChange={(e) => changeFindingDescription(index, e.target.value)}
+                  placeholder="Describe the allegation, conduct, policy issue, or complaint addressed by this finding."
+                />
               </label>
-              {index > 0 ? (
-                <button
-                  type="button"
-                  className="px-3 py-2 border rounded-xl text-red-700"
-                  onClick={() => removeFinding(index)}
-                >
-                  Remove
-                </button>
-              ) : null}
             </div>
           ))}
           <button type="button" className="px-3 py-2 border rounded-xl" onClick={addFinding}>

@@ -161,7 +161,10 @@ export type ComplaintFollowUp = {
   cpp_status?: string | null;
   cpp_case_note?: string | null;
   disposition_date?: string | null;
-  disposition_findings: string[];
+  disposition_findings: Array<{
+    finding: string;
+    description: string;
+  }>;
   disposition_case_note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
