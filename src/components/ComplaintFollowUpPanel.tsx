@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, ComplaintFollowUp } from "../lib/api";
+import ComplaintDocumentsSection from "./ComplaintDocumentsSection";
 
 const FOLLOW_UP_STATUSES = [
   "",
@@ -206,6 +207,8 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
             onChange={(e) => update("original_case_note", e.target.value)}
           />
         </label>
+
+        <ComplaintDocumentsSection complaintId={complaintId} section="original_complaint" />
       </section>
 
       <section className="space-y-3 border rounded-xl p-4">
@@ -241,6 +244,8 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
             onChange={(e) => update("ia_case_note", e.target.value)}
           />
         </label>
+
+        <ComplaintDocumentsSection complaintId={complaintId} section="internal_affairs" />
       </section>
 
       <section className="space-y-3 border rounded-xl p-4">
@@ -276,6 +281,8 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
             onChange={(e) => update("cpp_case_note", e.target.value)}
           />
         </label>
+
+        <ComplaintDocumentsSection complaintId={complaintId} section="cpp" />
       </section>
 
       <section className="space-y-3 border rounded-xl p-4">
@@ -342,6 +349,8 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
             onChange={(e) => update("disposition_case_note", e.target.value)}
           />
         </label>
+
+        <ComplaintDocumentsSection complaintId={complaintId} section="final_disposition" />
       </section>
 
       <button
@@ -353,9 +362,6 @@ export default function ComplaintFollowUpPanel({ complaintId }: { complaintId: n
         {saving ? "Saving…" : "Save Complaint Follow-Up"}
       </button>
 
-      <div className="text-xs text-gray-500">
-        Document uploads will be added in the next phase after these fields are confirmed working.
-      </div>
     </div>
   );
 }

@@ -97,6 +97,40 @@ async function request<T>(
   return (text ? JSON.parse(text) : null) as T;
 }
 
+async function requestForm<T>(path: string, formData: FormData): Promise<T> {
+  const headers = new Headers();
+  headers.set("Accept", "application/json");
+
+  const token = getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (STAFF_KEY) headers.set("X-Staff-Key", STAFF_KEY);
+
+  const res = await fetch(joinUrl(API_URL, path), {
+    method: "POST",
+    headers,
+    body: formData,
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+  const text = await res.text().catch(() => "");
+  return (text ? JSON.parse(text) : null) as T;
+}
+
+async function requestBlob(path: string): Promise<Blob> {
+  const headers = new Headers();
+  const token = getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (STAFF_KEY) headers.set("X-Staff-Key", STAFF_KEY);
+
+  const res = await fetch(joinUrl(API_URL, path), {
+    method: "GET",
+    headers,
+  });
+
+  if (!res.ok) throw new Error(await parseError(res));
+  return res.blob();
+}
+
 export type Officer = {
   id: number;
   first_name: string;
@@ -147,6 +181,23 @@ export type CaseNoteCreate = {
   note_date?: string;
 };
 
+
+
+export type ComplaintDocumentSection =
+  | "original_complaint"
+  | "internal_affairs"
+  | "cpp"
+  | "final_disposition";
+
+export type ComplaintDocument = {
+  id: number;
+  complaint_id: number;
+  section: ComplaintDocumentSection;
+  original_filename: string;
+  content_type?: string | null;
+  file_size: number;
+  created_at?: string | null;
+};
 
 export type ComplaintFollowUp = {
   id?: number;
@@ -240,6 +291,37 @@ export const api = {
       method: "PATCH",
       json: payload,
     }),
+
+
+  listComplaintDocuments: (
+    complaintId: number,
+    section?: ComplaintDocumentSection
+  ) =>
+    request<ComplaintDocument[]>(
+      `/complaints/${complaintId}/documents${
+        section ? `?section=${encodeURIComponent(section)}` : ""
+      }`
+    ),
+  uploadComplaintDocument: (
+    complaintId: number,
+    section: ComplaintDocumentSection,
+    file: File
+  ) => {
+    const formData = new FormData();
+    formData.append("section", section);
+    formData.append("file", file);
+    return requestForm<ComplaintDocument>(
+      `/complaints/${complaintId}/documents`,
+      formData
+    );
+  },
+  downloadComplaintDocument: (documentId: number) =>
+    requestBlob(`/complaint-documents/${documentId}/download`),
+  deleteComplaintDocument: (documentId: number) =>
+    request<{ ok: true; deleted_id: number }>(
+      `/complaint-documents/${documentId}`,
+      { method: "DELETE" }
+    ),
 
   listOfficers: (q: string = "") =>
     request<Officer[]>(`/officers${q ? `?q=${encodeURIComponent(q)}` : ""}`),
