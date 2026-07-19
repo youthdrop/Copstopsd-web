@@ -147,6 +147,26 @@ export type CaseNoteCreate = {
   note_date?: string;
 };
 
+
+export type ComplaintFollowUp = {
+  id?: number;
+  complaint_id: number;
+  original_submitted_date?: string | null;
+  original_submitted_to: string[];
+  original_case_note?: string | null;
+  ia_case_number?: string | null;
+  ia_status?: string | null;
+  ia_case_note?: string | null;
+  cpp_case_number?: string | null;
+  cpp_status?: string | null;
+  cpp_case_note?: string | null;
+  disposition_date?: string | null;
+  disposition_findings: string[];
+  disposition_case_note?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
 export type StaffUser = {
   id: number;
   email: string;
@@ -208,6 +228,15 @@ export const api = {
     request<Complaint>(`/complaints/${id}`, { method: "PATCH", json: payload }),
   deleteComplaint: (id: number) =>
     request<{ ok: true; deleted_id: number }>(`/complaints/${id}`, { method: "DELETE" }),
+
+
+  getComplaintFollowUp: (complaintId: number) =>
+    request<ComplaintFollowUp>(`/complaints/${complaintId}/follow-up`),
+  updateComplaintFollowUp: (complaintId: number, payload: Partial<ComplaintFollowUp>) =>
+    request<ComplaintFollowUp>(`/complaints/${complaintId}/follow-up`, {
+      method: "PATCH",
+      json: payload,
+    }),
 
   listOfficers: (q: string = "") =>
     request<Officer[]>(`/officers${q ? `?q=${encodeURIComponent(q)}` : ""}`),

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button";
+import ComplaintFollowUpPanel from "../components/ComplaintFollowUpPanel";
 import { api } from "../lib/api";
 
 type CaseNote = {
@@ -435,6 +436,8 @@ export default function ComplaintDetail() {
           </Button>
         </div>
       </div>
+
+      <ComplaintFollowUpPanel complaintId={complaintId} />
 
       <div className="border rounded-2xl p-4 shadow-sm bg-white space-y-3">
         <div className="font-semibold">Case Notes</div>
