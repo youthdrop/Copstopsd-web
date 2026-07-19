@@ -196,7 +196,20 @@ export type ComplaintDocument = {
   original_filename: string;
   content_type?: string | null;
   file_size: number;
+  storage_key?: string | null;
+  storage_backend?: "database" | "bucket" | null;
+  upload_status?: "pending" | "uploaded" | "failed" | null;
   created_at?: string | null;
+};
+
+export type ComplaintUploadTicket = {
+  document: ComplaintDocument;
+  upload_url: string;
+  upload_headers: Record<string, string>;
+};
+
+export type ComplaintDownloadTicket = {
+  download_url: string;
 };
 
 export type ComplaintFollowUp = {
@@ -302,21 +315,32 @@ export const api = {
         section ? `?section=${encodeURIComponent(section)}` : ""
       }`
     ),
-  uploadComplaintDocument: (
+  createComplaintUploadTicket: (
     complaintId: number,
     section: ComplaintDocumentSection,
     file: File
-  ) => {
-    const formData = new FormData();
-    formData.append("section", section);
-    formData.append("file", file);
-    return requestForm<ComplaintDocument>(
-      `/complaints/${complaintId}/documents`,
-      formData
-    );
-  },
-  downloadComplaintDocument: (documentId: number) =>
-    requestBlob(`/complaint-documents/${documentId}/download`),
+  ) =>
+    request<ComplaintUploadTicket>(
+      `/complaints/${complaintId}/documents/presign`,
+      {
+        method: "POST",
+        json: {
+          section,
+          original_filename: file.name,
+          content_type: file.type || "application/octet-stream",
+          file_size: file.size,
+        },
+      }
+    ),
+  completeComplaintUpload: (documentId: number) =>
+    request<ComplaintDocument>(
+      `/complaint-documents/${documentId}/complete`,
+      { method: "POST", json: {} }
+    ),
+  getComplaintDownloadTicket: (documentId: number) =>
+    request<ComplaintDownloadTicket>(
+      `/complaint-documents/${documentId}/download-url`
+    ),
   deleteComplaintDocument: (documentId: number) =>
     request<{ ok: true; deleted_id: number }>(
       `/complaint-documents/${documentId}`,

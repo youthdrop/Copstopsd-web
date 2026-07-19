@@ -6,6 +6,14 @@ type Props = {
   section: ComplaintDocumentSection;
 };
 
+type UploadRow = {
+  key: string;
+  filename: string;
+  progress: number;
+  status: "waiting" | "uploading" | "complete" | "failed";
+  error?: string;
+};
+
 function formatBytes(value?: number | null) {
   if (!value || value < 1) return "";
   if (value < 1024) return `${value} B`;
@@ -13,11 +21,49 @@ function formatBytes(value?: number | null) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function ComplaintDocumentsSection({ complaintId, section }: Props) {
+function putFileWithProgress(
+  uploadUrl: string,
+  headers: Record<string, string>,
+  file: File,
+  onProgress: (percent: number) => void
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", uploadUrl, true);
+
+    Object.entries(headers || {}).forEach(([name, value]) => {
+      xhr.setRequestHeader(name, value);
+    });
+
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) {
+        onProgress(Math.round((event.loaded / event.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
+        resolve();
+      } else {
+        reject(new Error(`Bucket upload failed (${xhr.status})`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Bucket upload connection failed"));
+    xhr.onabort = () => reject(new Error("Upload was cancelled"));
+    xhr.send(file);
+  });
+}
+
+export default function ComplaintDocumentsSection({
+  complaintId,
+  section,
+}: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [documents, setDocuments] = useState<ComplaintDocument[]>([]);
+  const [uploads, setUploads] = useState<UploadRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -40,79 +86,120 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [complaintId, section]);
 
-  async function uploadFiles(files: FileList | null) {
-    if (!files?.length) return;
+  function updateUpload(key: string, patch: Partial<UploadRow>) {
+    setUploads((previous) =>
+      previous.map((row) =>
+        row.key === key ? { ...row, ...patch } : row
+      )
+    );
+  }
 
-    const selectedFiles = Array.from(files);
-
-    setUploading(true);
-    setError("");
-    setMessage("");
-
-    let uploadedCount = 0;
-    const failedFiles: string[] = [];
-
+  async function uploadOne(file: File, key: string) {
     try {
-      for (const file of selectedFiles) {
-        if (file.size > 25 * 1024 * 1024) {
-          failedFiles.push(`${file.name}: larger than the 25 MB limit`);
-          continue;
-        }
+      updateUpload(key, { status: "uploading", progress: 0 });
 
-        try {
-          await api.uploadComplaintDocument(complaintId, section, file);
-          uploadedCount += 1;
-        } catch (e: any) {
-          const reason = e?.message || "upload failed";
-          failedFiles.push(`${file.name}: ${reason}`);
-        }
-      }
+      const ticket = await api.createComplaintUploadTicket(
+        complaintId,
+        section,
+        file
+      );
 
-      await loadDocuments();
+      await putFileWithProgress(
+        ticket.upload_url,
+        ticket.upload_headers,
+        file,
+        (progress) => updateUpload(key, { progress })
+      );
 
-      if (uploadedCount > 0) {
-        setMessage(
-          uploadedCount === 1
-            ? "1 document uploaded."
-            : `${uploadedCount} documents uploaded.`
-        );
-      }
+      await api.completeComplaintUpload(ticket.document.id);
 
-      if (failedFiles.length > 0) {
-        setError(`Could not upload: ${failedFiles.join("; ")}`);
-      }
-    } finally {
-      // Always clear the browser file selection, even when one file fails.
-      if (inputRef.current) inputRef.current.value = "";
-      setUploading(false);
+      updateUpload(key, {
+        status: "complete",
+        progress: 100,
+      });
+
+      return true;
+    } catch (e: any) {
+      updateUpload(key, {
+        status: "failed",
+        error: e?.message || "Upload failed",
+      });
+      return false;
     }
   }
 
-  function clearSelectedFiles() {
-    if (inputRef.current) inputRef.current.value = "";
+  async function uploadFiles(files: FileList | null) {
+    if (!files?.length) return;
+
+    const selected = Array.from(files);
     setError("");
     setMessage("");
+
+    const rows: UploadRow[] = selected.map((file, index) => ({
+      key: `${Date.now()}-${index}-${file.name}`,
+      filename: file.name,
+      progress: 0,
+      status: "waiting",
+    }));
+
+    setUploads(rows);
+
+    if (inputRef.current) {
+      inputRef.current.value = "";
+    }
+
+    let successful = 0;
+
+    for (let index = 0; index < selected.length; index += 1) {
+      const file = selected[index];
+      const row = rows[index];
+
+      if (file.size > 5 * 1024 * 1024 * 1024) {
+        updateUpload(row.key, {
+          status: "failed",
+          error: "File exceeds the 5 GB limit.",
+        });
+        continue;
+      }
+
+      if (await uploadOne(file, row.key)) {
+        successful += 1;
+      }
+    }
+
+    await loadDocuments();
+
+    if (successful > 0) {
+      setMessage(
+        successful === 1
+          ? "1 document uploaded."
+          : `${successful} documents uploaded.`
+      );
+    }
   }
 
   async function downloadDocument(document: ComplaintDocument) {
     setError("");
+
     try {
-      const blob = await api.downloadComplaintDocument(document.id);
-      const url = URL.createObjectURL(blob);
-      const anchor = window.document.createElement("a");
-      anchor.href = url;
-      anchor.download = document.original_filename;
-      window.document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(url);
+      const ticket = await api.getComplaintDownloadTicket(document.id);
+
+      if (ticket.download_url.startsWith("/")) {
+        window.location.assign(
+          `${window.location.origin}${ticket.download_url}`
+        );
+      } else {
+        window.location.assign(ticket.download_url);
+      }
     } catch (e: any) {
       setError(e?.message || "Download failed");
     }
   }
 
   async function deleteDocument(document: ComplaintDocument) {
-    const confirmed = window.confirm(`Delete ${document.original_filename}?`);
+    const confirmed = window.confirm(
+      `Delete ${document.original_filename}?`
+    );
     if (!confirmed) return;
 
     setDeletingId(document.id);
@@ -121,7 +208,9 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
 
     try {
       await api.deleteComplaintDocument(document.id);
-      setDocuments((previous) => previous.filter((item) => item.id !== document.id));
+      setDocuments((previous) =>
+        previous.filter((item) => item.id !== document.id)
+      );
       setMessage("Document deleted.");
     } catch (e: any) {
       setError(e?.message || "Delete failed");
@@ -135,8 +224,8 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
       <div>
         <div className="text-sm font-semibold">Documents</div>
         <div className="text-xs text-gray-500">
-          Add one or more PDFs, images, audio files, videos, Word documents, or other supporting files.
-          Maximum 25 MB per file.
+          Files upload directly to private object storage. Multiple files and
+          upload progress are supported.
         </div>
       </div>
 
@@ -147,26 +236,75 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
           multiple
           className="block text-sm"
           onChange={(event) => uploadFiles(event.target.files)}
-          disabled={uploading}
         />
+
         <button
           type="button"
           className="px-3 py-2 border rounded-xl text-sm"
-          onClick={clearSelectedFiles}
-          disabled={uploading}
+          onClick={() => {
+            setUploads([]);
+            setError("");
+            setMessage("");
+          }}
         >
-          Clear Selection
+          Clear
         </button>
-        {uploading ? <span className="text-sm text-gray-600">Uploading…</span> : null}
       </div>
 
-      {message ? <div className="text-sm text-green-700">{message}</div> : null}
-      {error ? <div className="text-sm text-red-700">{error}</div> : null}
+      {uploads.length > 0 ? (
+        <div className="space-y-2">
+          {uploads.map((upload) => (
+            <div
+              key={upload.key}
+              className="border rounded-xl p-3 space-y-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-sm font-medium break-all">
+                  {upload.filename}
+                </div>
+
+                <div className="text-xs text-gray-600">
+                  {upload.status === "waiting" && "Waiting"}
+                  {upload.status === "uploading" &&
+                    `${upload.progress}%`}
+                  {upload.status === "complete" && "Uploaded"}
+                  {upload.status === "failed" && "Failed"}
+                </div>
+              </div>
+
+              <div className="h-2 rounded-full bg-gray-200 overflow-hidden">
+                <div
+                  className="h-full bg-black transition-all"
+                  style={{ width: `${upload.progress}%` }}
+                />
+              </div>
+
+              {upload.error ? (
+                <div className="text-xs text-red-700">
+                  {upload.error}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {message ? (
+        <div className="text-sm text-green-700">{message}</div>
+      ) : null}
+
+      {error ? (
+        <div className="text-sm text-red-700">{error}</div>
+      ) : null}
 
       {loading ? (
-        <div className="text-sm text-gray-500">Loading documents…</div>
+        <div className="text-sm text-gray-500">
+          Loading documents…
+        </div>
       ) : documents.length === 0 ? (
-        <div className="text-sm text-gray-500">No documents uploaded in this section.</div>
+        <div className="text-sm text-gray-500">
+          No documents uploaded in this section.
+        </div>
       ) : (
         <div className="space-y-2">
           {documents.map((document) => (
@@ -175,12 +313,26 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
               className="flex flex-wrap items-center justify-between gap-3 border rounded-xl p-3"
             >
               <div className="min-w-0">
-                <div className="font-medium break-all">{document.original_filename}</div>
+                <div className="font-medium break-all">
+                  {document.original_filename}
+                </div>
+
                 <div className="text-xs text-gray-500">
                   {document.content_type || "File"}
-                  {document.file_size ? ` • ${formatBytes(document.file_size)}` : ""}
+                  {document.file_size
+                    ? ` • ${formatBytes(document.file_size)}`
+                    : ""}
+                  {document.storage_backend
+                    ? ` • ${
+                        document.storage_backend === "bucket"
+                          ? "Object storage"
+                          : "Legacy database"
+                      }`
+                    : ""}
                   {document.created_at
-                    ? ` • ${new Date(document.created_at).toLocaleString()}`
+                    ? ` • ${new Date(
+                        document.created_at
+                      ).toLocaleString()}`
                     : ""}
                 </div>
               </div>
@@ -193,13 +345,16 @@ export default function ComplaintDocumentsSection({ complaintId, section }: Prop
                 >
                   Download
                 </button>
+
                 <button
                   type="button"
                   className="px-3 py-2 border rounded-xl text-sm text-red-700"
                   disabled={deletingId === document.id}
                   onClick={() => deleteDocument(document)}
                 >
-                  {deletingId === document.id ? "Deleting…" : "Delete"}
+                  {deletingId === document.id
+                    ? "Deleting…"
+                    : "Delete"}
                 </button>
               </div>
             </div>
